@@ -1,0 +1,23 @@
+{
+  "_purpose": "Contract file. ChatGPT fills this shape from Reddit/forum climbing posts and saves it as failure_modes.json next to index.html. The app loads it automatically if present.",
+  "_instructions_for_collector": [
+    "Source: r/climbharder, r/bouldering, r/climbing, Mountain Project forums.",
+    "Look for posts where someone describes failing a specific move AND attributes a cause.",
+    "Do NOT summarise away the attribution detail — the causal claim is the whole point.",
+    "lag_in_moves is the key field: how many moves BEFORE the visible failure the writer thinks the real error happened. 0 means the cause was the failing move itself.",
+    "verified = true only if the writer says the correction actually worked afterwards.",
+    "Target 100-150 records. Partial is fine; the app degrades gracefully."
+  ],
+  "modes": [
+    {
+      "name": "example — delete this entry",
+      "move_type": "deadpoint | dyno | lock-off | heel hook | smear | mantle | crimp pull | ...",
+      "failure_surfaced_as": "what visibly went wrong (barn door, foot popped, missed the catch)",
+      "attributed_cause": "what the writer says actually caused it, in their words",
+      "lag_in_moves": 0,
+      "correction": "what they changed",
+      "verified": false,
+      "source_url": "https://reddit.com/..."
+    }
+  ]
+}

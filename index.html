@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beta Trace</title>
+<style>
+  :root{
+    --bg:#0c0d10; --panel:#14161b; --panel-2:#1b1e25; --line:#282c36;
+    --fg:#e8eaf0; --dim:#8b92a3; --faint:#5b6273;
+    --accent:#6ea8fe; --com:#ffc457; --good:#5dd39e; --bad:#ff7a7a; --move:#b58cff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;
+    align-items:baseline;gap:14px;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13px}
+  .wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:0;min-height:calc(100vh - 53px)}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .stage{padding:20px;min-width:0}
+  .side{border-left:1px solid var(--line);background:var(--panel);padding:20px;min-width:0}
+  @media(max-width:900px){.side{border-left:none;border-top:1px solid var(--line)}}
+
+  .drop{border:1.5px dashed var(--line);border-radius:10px;padding:34px 20px;text-align:center;
+    color:var(--dim);cursor:pointer;transition:.15s;background:var(--panel)}
+  .drop:hover,.drop.over{border-color:var(--accent);color:var(--fg);background:var(--panel-2)}
+  .drop b{color:var(--fg);font-weight:600}
+  .drop small{display:block;margin-top:6px;color:var(--faint);font-size:12px}
+
+  .viewer{position:relative;border-radius:10px;overflow:hidden;background:#000;
+    border:1px solid var(--line);display:none}
+  .viewer.on{display:block}
+  video{display:block;width:100%;max-height:60vh;object-fit:contain;background:#000}
+  canvas#ov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  .bar{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  button{background:var(--panel-2);color:var(--fg);border:1px solid var(--line);
+    padding:7px 13px;border-radius:7px;font:inherit;font-size:13px;cursor:pointer;transition:.12s}
+  button:hover:not(:disabled){border-color:var(--accent);background:#222733}
+  button:disabled{opacity:.4;cursor:default}
+  button.go{background:var(--accent);border-color:var(--accent);color:#08101f;font-weight:600}
+  button.go:hover:not(:disabled){filter:brightness(1.1);background:var(--accent)}
+
+  .prog{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:12px;display:none}
+  .prog.on{display:block}
+  .prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);
+    margin:0 0 10px;font-weight:600}
+  .sect{margin-bottom:26px}
+
+  .metric{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    padding:9px 0;border-bottom:1px solid var(--line)}
+  .metric:last-child{border-bottom:none}
+  .metric .k{color:var(--dim);font-size:13px}
+  .metric .v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+  .metric .v small{color:var(--faint);font-size:11px;margin-left:3px}
+  .hint{color:var(--faint);font-size:11.5px;line-height:1.45;margin-top:8px}
+
+  .timeline{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    padding:10px;min-height:56px}
+  .tl-row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+  .tl-row:last-child{margin-bottom:0}
+  .tl-lab{width:34px;font-family:var(--mono);font-size:10px;color:var(--faint);flex:none}
+  .tl-track{flex:1;height:13px;background:#0e1015;border-radius:3px;position:relative;overflow:hidden}
+  .tl-seg{position:absolute;top:0;bottom:0;background:var(--move);opacity:.75;border-radius:2px}
+  .empty{color:var(--faint);font-size:12.5px;text-align:center;padding:16px 4px}
+
+  .moves{display:flex;flex-direction:column;gap:5px;max-height:230px;overflow-y:auto}
+  .mv{display:flex;align-items:center;gap:9px;padding:7px 9px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:13px;transition:.12s}
+  .mv:hover{border-color:var(--accent)}
+  .mv.tagged{border-color:var(--bad)}
+  .mv .n{font-family:var(--mono);color:var(--faint);font-size:11px;width:22px;flex:none}
+  .mv .lm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mv .t{font-family:var(--mono);font-size:11px;color:var(--dim);flex:none}
+
+  select{width:100%;background:var(--panel-2);color:var(--fg);border:1px solid var(--line);
+    border-radius:6px;padding:7px 9px;font:inherit;font-size:13px;margin-top:8px}
+  .gap{border:1px solid var(--line);border-left:2px solid var(--com);border-radius:0 8px 8px 0;
+    padding:11px 13px;background:var(--panel-2)}
+  .gap b{display:block;font-size:12.5px;margin-bottom:5px}
+  .gap p{margin:0;font-size:12px;color:var(--dim);line-height:1.5}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--dim);margin-top:10px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;
+    vertical-align:middle}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Beta Trace</h1>
+  <span class="sub">Centre-of-mass analysis for climbing video — and a map of what video can't see</span>
+</header>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="drop" id="drop">
+      <b>Drop a climbing clip here</b> or click to choose
+      <small>Side-on, whole body in frame, 5–30s. Nothing uploads — everything runs in this browser.</small>
+    </div>
+
+    <div class="viewer" id="viewer">
+      <video id="vid" playsinline muted></video>
+      <canvas id="ov"></canvas>
+    </div>
+
+    <div class="bar" id="bar" style="display:none">
+      <button class="go" id="run">Analyse</button>
+      <button id="replay" disabled>Replay trace</button>
+      <button id="export" disabled>Export JSON</button>
+      <label style="margin-left:auto;font-size:12.5px;color:var(--dim)">
+        <input type="checkbox" id="fast" checked> 2× decode
+      </label>
+    </div>
+    <div class="prog" id="prog"><i></i></div>
+
+    <div class="sect" style="margin-top:22px">
+      <h2>Move segmentation</h2>
+      <div class="timeline" id="tl">
+        <div class="empty">Contact events appear here once a clip is analysed.</div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--com)"></i>COM path</span>
+        <span><i style="background:var(--move)"></i>limb in motion</span>
+        <span><i style="background:var(--accent)"></i>skeleton</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="sect">
+      <h2>Kinematic metrics</h2>
+      <div id="metrics">
+        <div class="empty">No clip analysed yet.</div>
+      </div>
+      <p class="hint" id="mhint" style="display:none">
+        All lengths are in torso units (shoulder&nbsp;→&nbsp;hip), so these are comparable
+        across climbers of different size.
+      </p>
+    </div>
+
+    <div class="sect">
+      <h2>Moves &amp; failure attribution</h2>
+      <div class="moves" id="moves">
+        <div class="empty">Analyse a clip to segment it into moves.</div>
+      </div>
+      <select id="tagsel" style="display:none"></select>
+      <p class="hint" id="thint" style="display:none">
+        Pick the move where it <em>felt</em> wrong — then the move you think actually
+        caused it. The gap between them is the credit-assignment lag.
+      </p>
+    </div>
+
+    <div class="sect">
+      <h2>What this can't see</h2>
+      <div class="gap">
+        <b>Grip type and grip force</b>
+        <p>Pose estimation gives a wrist, not fingers. Crimp vs sloper vs pinch, and how hard
+        each is being pulled, are invisible here — and they are most of what decides whether a
+        move goes. This is the same signal missing from robot manipulation datasets: video
+        records that contact happened, never what it cost.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs";
+
+const $ = s => document.querySelector(s);
+const drop=$('#drop'), viewer=$('#viewer'), vid=$('#vid'), ov=$('#ov'),
+      bar=$('#bar'), runBtn=$('#run'), replayBtn=$('#replay'), expBtn=$('#export'),
+      prog=$('#prog'), progBar=prog.firstElementChild, fastChk=$('#fast');
+const ctx = ov.getContext('2d');
+
+let landmarker=null, frames=[], analysis=null, failureModes=[];
+let tagState={surfaced:null, cause:null};
+
+/* ---------- Dempster segment mass fractions (sum = 1.000) ---------- */
+/* [massFraction, proximalLandmark, distalLandmark, fractionAlongSegment] */
+const SEGMENTS = [
+  [0.081, 0,  0,  0.00],   // head + neck (at nose)
+  [0.497, 33, 34, 0.50],   // trunk (virtual: mid-shoulder -> mid-hip)
+  [0.028, 11, 13, 0.436],  // L upper arm
+  [0.028, 12, 14, 0.436],  // R upper arm
+  [0.016, 13, 15, 0.430],  // L forearm
+  [0.016, 14, 16, 0.430],  // R forearm
+  [0.006, 15, 15, 0.00],   // L hand
+  [0.006, 16, 16, 0.00],   // R hand
+  [0.100, 23, 25, 0.433],  // L thigh
+  [0.100, 24, 26, 0.433],  // R thigh
+  [0.0465,25, 27, 0.434],  // L shank
+  [0.0465,26, 28, 0.434],  // R shank
+  [0.0145,27, 31, 0.50],   // L foot
+  [0.0145,28, 32, 0.50],   // R foot
+];
+const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],
+               [23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32]];
+const LIMBS = [{n:'LH',i:15},{n:'RH',i:16},{n:'LF',i:27},{n:'RF',i:28}];
+
+function pt(lm, i){
+  if(i===33) return {x:(lm[11].x+lm[12].x)/2, y:(lm[11].y+lm[12].y)/2};
+  if(i===34) return {x:(lm[23].x+lm[24].x)/2, y:(lm[23].y+lm[24].y)/2};
+  return lm[i];
+}
+function computeCOM(lm){
+  let x=0, y=0;
+  for(const [m,a,b,f] of SEGMENTS){
+    const p=pt(lm,a), q=pt(lm,b);
+    x += m * (p.x + (q.x-p.x)*f);
+    y += m * (p.y + (q.y-p.y)*f);
+  }
+  return {x,y};
+}
+function torsoLen(lm){
+  const s=pt(lm,33), h=pt(lm,34);
+  return Math.hypot(s.x-h.x, s.y-h.y) || 1e-6;
+}
+
+/* ---------- loading a clip ---------- */
+drop.onclick = () => {
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='video/*';
+  inp.onchange = e => e.target.files[0] && load(e.target.files[0]);
+  inp.click();
+};
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('video/'));
+  if(f) load(f);
+};
+
+function load(file){
+  vid.src = URL.createObjectURL(file);
+  vid.onloadedmetadata = () => {
+    ov.width = vid.videoWidth; ov.height = vid.videoHeight;
+    viewer.classList.add('on');
+    drop.style.display='none';
+    bar.style.display='flex';
+    frames=[]; analysis=null;
+    replayBtn.disabled=true; expBtn.disabled=true;
+    vid.currentTime = 0;
+  };
+}
+
+/* ---------- model ---------- */
+async function getModel(){
+  if(landmarker) return landmarker;
+  runBtn.textContent='Loading model…';
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");
+  landmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions:{
+      modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate:"GPU"
+    },
+    runningMode:"VIDEO", numPoses:1,
+    minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5
+  });
+  return landmarker;
+}
+
+/* ---------- the analysis pass ---------- */
+runBtn.onclick = async () => {
+  runBtn.disabled=true; replayBtn.disabled=true; expBtn.disabled=true;
+  try{ await getModel(); }
+  catch(err){ runBtn.textContent='Model failed to load'; console.error(err); return; }
+  runBtn.textContent='Analysing…';
+  prog.classList.add('on');
+  frames=[];
+
+  vid.playbackRate = fastChk.checked ? 2 : 1;
+  vid.currentTime = 0;
+  await vid.play();
+
+  await new Promise(resolve => {
+    const step = (now, meta) => {
+      if(vid.paused || vid.ended) return resolve();
+      const tMs = meta.mediaTime * 1000;
+      let res;
+      try { res = landmarker.detectForVideo(vid, performance.now()); }
+      catch(e){ /* skip bad frame */ }
+      if(res && res.landmarks && res.landmarks[0]){
+        const lm = res.landmarks[0];
+        frames.push({ t: meta.mediaTime, com: computeCOM(lm), torso: torsoLen(lm),
+                      lm: lm.map(p=>({x:p.x,y:p.y,v:p.visibility??1})) });
+      }
+      progBar.style.width = (100*vid.currentTime/vid.duration).toFixed(1)+'%';
+      drawLive(res);
+      vid.requestVideoFrameCallback(step);
+    };
+    vid.requestVideoFrameCallback(step);
+    vid.onended = resolve;
+  });
+
+  vid.pause();
+  prog.classList.remove('on');
+  runBtn.disabled=false; runBtn.textContent='Re-analyse';
+
+  if(frames.length < 12){
+    $('#metrics').innerHTML =
+      '<div class="empty">Too few frames with a confident pose. Try a clip where the whole body stays in view.</div>';
+    return;
+  }
+  analysis = analyse(frames);
+  render(analysis);
+  replayBtn.disabled=false; expBtn.disabled=false;
+  drawTrace();
+};
+
+function drawLive(res){
+  ctx.clearRect(0,0,ov.width,ov.height);
+  if(!res || !res.landmarks || !res.landmarks[0]) return;
+  const lm=res.landmarks[0], W=ov.width, H=ov.height;
+  ctx.strokeStyle='rgba(110,168,254,.85)'; ctx.lineWidth=Math.max(2,W/400);
+  ctx.beginPath();
+  for(const [a,b] of BONES){
+    ctx.moveTo(lm[a].x*W, lm[a].y*H); ctx.lineTo(lm[b].x*W, lm[b].y*H);
+  }
+  ctx.stroke();
+  const c=computeCOM(lm);
+  ctx.fillStyle='#ffc457';
+  ctx.beginPath(); ctx.arc(c.x*W, c.y*H, Math.max(5,W/120), 0, 7); ctx.fill();
+}
+
+/* ---------- metrics ---------- */
+function analyse(F){
+  const W = ov.width, H = ov.height, aspect = W/H;
+  // normalise to torso units, correcting for non-square pixel geometry
+  const med = [...F.map(f=>f.torso)].sort((a,b)=>a-b)[Math.floor(F.length/2)];
+  const P = F.map(f => ({ t:f.t, x:(f.com.x*aspect)/med, y:f.com.y/med }));
+
+  let path=0;
+  for(let i=1;i<P.length;i++) path += Math.hypot(P[i].x-P[i-1].x, P[i].y-P[i-1].y);
+  const net = Math.hypot(P.at(-1).x-P[0].x, P.at(-1).y-P[0].y);
+  const economy = net > 0.05 ? path/net : NaN;
+
+  // downward (wasted) vertical travel vs net rise — y grows downward in image space
+  let down=0, up=0;
+  for(let i=1;i<P.length;i++){
+    const dy = P[i].y - P[i-1].y;
+    if(dy > 0) down += dy; else up -= dy;
+  }
+  const sag = up > 0.05 ? down/up : NaN;
+
+  // dimensionless normalised jerk
+  const T = P.at(-1).t - P[0].t;
+  let jerkSq = 0;
+  for(let i=3;i<P.length;i++){
+    const dt = (P[i].t - P[i-1].t) || 1/30;
+    const jx = (P[i].x - 3*P[i-1].x + 3*P[i-2].x - P[i-3].x)/(dt**3);
+    const jy = (P[i].y - 3*P[i-1].y + 3*P[i-2].y - P[i-3].y)/(dt**3);
+    jerkSq += (jx*jx + jy*jy) * dt;
+  }
+  const njerk = (T>0 && path>0) ? Math.sqrt(0.5*jerkSq*(T**5)/(path**2)) : NaN;
+
+  // limb motion -> move segmentation
+  const tracks = LIMBS.map(L => {
+    const sp=[];
+    for(let i=1;i<F.length;i++){
+      const dt=(F[i].t-F[i-1].t)||1/30;
+      const a=F[i-1].lm[L.i], b=F[i].lm[L.i];
+      sp.push(Math.hypot((b.x-a.x)*aspect, b.y-a.y)/med/dt);
+    }
+    const sm = smooth(sp, 5);
+    const thr = 0.9;                       // torso-lengths per second
+    const segs=[]; let start=null;
+    for(let i=0;i<sm.length;i++){
+      if(sm[i] > thr && start===null) start=i;
+      else if(sm[i] <= thr && start!==null){
+        const t0=F[start].t, t1=F[i].t;
+        if(t1-t0 >= 0.13) segs.push({limb:L.n, t0, t1});
+        start=null;
+      }
+    }
+    if(start!==null && F.at(-1).t - F[start].t >= 0.13)
+      segs.push({limb:L.n, t0:F[start].t, t1:F.at(-1).t});
+    return {limb:L.n, segs};
+  });
+
+  const moves = tracks.flatMap(t=>t.segs).sort((a,b)=>a.t0-b.t0)
+                      .map((m,i)=>({...m, n:i+1}));
+  const staticRatio = 1 - moves.reduce((s,m)=>s+(m.t1-m.t0),0) / Math.max(T,1e-6);
+
+  return { economy, sag, njerk, duration:T, moves, tracks, path,
+           samples:F.length, com:P, staticRatio:Math.max(0,Math.min(1,staticRatio)) };
+}
+function smooth(a,k){
+  const h=k>>1;
+  return a.map((_,i)=>{
+    let s=0,n=0;
+    for(let j=Math.max(0,i-h); j<=Math.min(a.length-1,i+h); j++){ s+=a[j]; n++; }
+    return s/n;
+  });
+}
+
+/* ---------- rendering ---------- */
+const fmt = (v,d=2) => Number.isFinite(v) ? v.toFixed(d) : '—';
+
+function render(A){
+  $('#metrics').innerHTML = [
+    ['Path economy', fmt(A.economy), '×', 'COM distance travelled ÷ straight-line distance. 1.0 is a perfect line; strong climbers sit low.'],
+    ['Normalised jerk', fmt(A.njerk,0), '', 'Dimensionless smoothness. Lower is smoother — the best-validated motor-skill metric there is.'],
+    ['Wasted sag', fmt(A.sag), '×', 'Downward COM travel ÷ net rise. Bouncing, re-setting, dropping out of a move.'],
+    ['Static ratio', fmt(A.staticRatio*100,0), '%', 'Share of the clip with no limb in motion. Hesitation and shake-outs.'],
+    ['Moves detected', A.moves.length, '', ''],
+    ['Duration', fmt(A.duration,1), 's', ''],
+  ].map(([k,v,u,h])=>`<div class="metric" title="${h}">
+      <span class="k">${k}</span><span class="v">${v}<small>${u}</small></span></div>`).join('');
+  $('#mhint').style.display='block';
+
+  const D = A.duration || 1, t0 = A.com[0].t;
+  $('#tl').innerHTML = A.tracks.map(tr=>`
+    <div class="tl-row"><span class="tl-lab">${tr.limb}</span>
+      <span class="tl-track">${tr.segs.map(s=>
+        `<span class="tl-seg" style="left:${100*(s.t0-t0)/D}%;width:${Math.max(0.8,100*(s.t1-s.t0)/D)}%"></span>`
+      ).join('')}</span></div>`).join('');
+
+  $('#moves').innerHTML = A.moves.length
+    ? A.moves.map(m=>`<div class="mv" data-n="${m.n}" data-t="${m.t0}">
+        <span class="n">${m.n}</span><span class="lm">${m.limb} move</span>
+        <span class="t">${m.t0.toFixed(1)}s</span></div>`).join('')
+    : '<div class="empty">No discrete moves detected — the clip may be too short or too static.</div>';
+  $('#moves').querySelectorAll('.mv').forEach(el=>{
+    el.onclick = () => { vid.currentTime = +el.dataset.t; tagMove(+el.dataset.n, el); };
+  });
+  $('#thint').style.display='block';
+}
+
+function tagMove(n, el){
+  if(tagState.surfaced === null){
+    tagState.surfaced = n;
+    el.classList.add('tagged');
+    $('#thint').innerHTML = `Failure surfaced at move <b>${n}</b>. Now click the move you think actually <em>caused</em> it.`;
+  } else if(tagState.cause === null){
+    tagState.cause = n;
+    const lag = tagState.surfaced - n;
+    el.classList.add('tagged');
+    $('#thint').innerHTML = `Surfaced at <b>${tagState.surfaced}</b>, caused at <b>${n}</b> —
+      credit-assignment lag of <b>${lag}</b> move${Math.abs(lag)===1?'':'s'}.
+      <em>This is the label no sensor produces.</em>`;
+  } else {
+    tagState={surfaced:null, cause:null};
+    $('#moves').querySelectorAll('.mv').forEach(x=>x.classList.remove('tagged'));
+    $('#thint').textContent='Reset. Click the move where it felt wrong.';
+  }
+}
+
+function drawTrace(){
+  if(!analysis) return;
+  const W=ov.width, H=ov.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.lineWidth=Math.max(2.5,W/300); ctx.lineJoin='round'; ctx.lineCap='round';
+  const F=frames;
+  for(let i=1;i<F.length;i++){
+    ctx.strokeStyle=`hsla(${42 - 42*i/F.length}, 100%, ${58+12*i/F.length}%, .9)`;
+    ctx.beginPath();
+    ctx.moveTo(F[i-1].com.x*W, F[i-1].com.y*H);
+    ctx.lineTo(F[i].com.x*W, F[i].com.y*H);
+    ctx.stroke();
+  }
+}
+
+replayBtn.onclick = async () => {
+  if(!frames.length) return;
+  vid.playbackRate=1; vid.currentTime=0; await vid.play();
+  const tick = () => {
+    if(vid.paused||vid.ended){ drawTrace(); return; }
+    const t=vid.currentTime;
+    let i=0; while(i<frames.length-1 && frames[i].t < t) i++;
+    const W=ov.width,H=ov.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.lineWidth=Math.max(2.5,W/300); ctx.lineJoin='round';
+    ctx.strokeStyle='rgba(255,196,87,.9)';
+    ctx.beginPath();
+    for(let k=0;k<=i;k++){
+      const p=frames[k].com;
+      k ? ctx.lineTo(p.x*W,p.y*H) : ctx.moveTo(p.x*W,p.y*H);
+    }
+    ctx.stroke();
+    const lm=frames[i].lm;
+    ctx.strokeStyle='rgba(110,168,254,.8)'; ctx.lineWidth=Math.max(2,W/400);
+    ctx.beginPath();
+    for(const [a,b] of BONES){ ctx.moveTo(lm[a].x*W,lm[a].y*H); ctx.lineTo(lm[b].x*W,lm[b].y*H); }
+    ctx.stroke();
+    ctx.fillStyle='#ffc457';
+    ctx.beginPath(); ctx.arc(frames[i].com.x*W, frames[i].com.y*H, Math.max(6,W/110),0,7); ctx.fill();
+    requestAnimationFrame(tick);
+  };
+  tick();
+};
+
+expBtn.onclick = () => {
+  const A=analysis;
+  const out={
+    schema:'beta-trace/v1',
+    created:new Date().toISOString(),
+    metrics:{ path_economy:A.economy, normalised_jerk:A.njerk, wasted_sag:A.sag,
+              static_ratio:A.staticRatio, duration_s:A.duration, samples:A.samples },
+    moves:A.moves,
+    attribution: (tagState.surfaced && tagState.cause)
+      ? { surfaced_at_move:tagState.surfaced, caused_at_move:tagState.cause,
+          lag_in_moves: tagState.surfaced - tagState.cause }
+      : null,
+    missing_modalities:['grip_type','grip_force','foot_pressure','contact_normal_force'],
+    com_trace:A.com.map(p=>[+p.t.toFixed(3), +p.x.toFixed(4), +p.y.toFixed(4)])
+  };
+  const b=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download='beta-trace.json'; a.click();
+};
+
+/* optional: failure taxonomy produced separately */
+fetch('failure_modes.json').then(r=>r.ok?r.json():null).then(d=>{
+  if(!d || !Array.isArray(d.modes)) return;
+  failureModes=d.modes;
+  const sel=$('#tagsel');
+  sel.style.display='block';
+  sel.innerHTML='<option>Tag a failure mode…</option>' +
+    failureModes.map(m=>`<option>${m.name}</option>`).join('');
+}).catch(()=>{});
+</script>
+</body>
+</html>
