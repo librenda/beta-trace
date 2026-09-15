@@ -235,11 +235,11 @@
 <script>
 let PoseLandmarker=null, FilesetResolver=null;
 
-/* Local copy first (npm i @mediapipe/tasks-vision@0.10.22), then CDNs. */
+/* Local copy first (npm i @mediapipe/tasks-vision@0.10.21), then CDNs. */
 const CDNS = [
   "./node_modules/@mediapipe/tasks-vision",
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22",
-  "https://unpkg.com/@mediapipe/tasks-vision@0.10.22"
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21",
+  "https://unpkg.com/@mediapipe/tasks-vision@0.10.21"
 ];
 /* Local model file first (see README), then Google's copy. */
 const MODELS = [
@@ -369,7 +369,9 @@ runBtn.onclick = async () => {
     runBtn.textContent='Analyse'; runBtn.disabled=false;
     setStatus('<b>Could not load the pose model.</b><br>'+
       String(err && err.message || err)+
-      '<br>Usually the network blocking the CDN. Try a phone hotspot.', true);
+      '<br>Check the console: a 404 means the pinned library version does not exist, '+
+      'a CORS/origin error means the page is open over file:// (serve it with '+
+      '<code>python3 -m http.server</code> instead), and a timeout means the network is blocking the CDN.', true);
     return;
   }
   setStatus('Analysing — the clip plays through once while it tracks.');
