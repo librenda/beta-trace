@@ -139,7 +139,6 @@
       </label>
     </div>
     <div class="prog" id="prog"><i></i></div>
-    <div id="status" style="display:none;margin-top:10px;font-size:12.5px;color:var(--dim);line-height:1.5"></div>
 
     <div class="sect" style="margin-top:22px">
       <h2>Move segmentation</h2>
@@ -232,50 +231,9 @@
 })();
 </script>
 
-<script>
-let PoseLandmarker=null, FilesetResolver=null;
-
-/* Local copy first (npm i @mediapipe/tasks-vision@0.10.22), then CDNs. */
-const CDNS = [
-  "./node_modules/@mediapipe/tasks-vision",
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22",
-  "https://unpkg.com/@mediapipe/tasks-vision@0.10.22"
-];
-/* Local model file first (see README), then Google's copy. */
-const MODELS = [
-  "./pose_model.task",
-  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
-];
-async function firstReachable(urls){
-  for(const u of urls){
-    try{ const r = await fetch(u, {method:'HEAD'}); if(r.ok) return u; }
-    catch(e){}
-    try{ const r = await fetch(u); if(r.ok) return u; }
-    catch(e){}
-  }
-  return urls[urls.length-1];
-}
-
-async function loadLib(){
-  let lastErr=null;
-  for(const base of CDNS){
-    try{
-      setStatus(`Loading library from ${base.startsWith('.') ? 'local folder' : new URL(base).hostname}…`);
-      const mod = await import(`${base}/vision_bundle.mjs`);
-      PoseLandmarker = mod.PoseLandmarker;
-      FilesetResolver = mod.FilesetResolver;
-      if(PoseLandmarker && FilesetResolver) return base;
-    }catch(e){ lastErr=e; }
-  }
-  throw lastErr || new Error('all CDNs unreachable');
-}
-
-function setStatus(msg, bad){
-  const el=document.getElementById('status');
-  el.style.display='block';
-  el.style.color = bad ? '#ff7a7a' : '#8b92a3';
-  el.innerHTML = msg;
-}
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs";
 
 const $ = s => document.querySelector(s);
 const drop=$('#drop'), viewer=$('#viewer'), vid=$('#vid'), ov=$('#ov'),
@@ -339,40 +297,25 @@ window.addEventListener('clip-loaded', () => {
 /* ---------- model ---------- */
 async function getModel(){
   if(landmarker) return landmarker;
-  const base = await loadLib();
-  setStatus('Loading WASM runtime…');
-  const vision = await FilesetResolver.forVisionTasks(`${base}/wasm`);
-  setStatus('Loading pose model…');
-  const modelPath = await firstReachable(MODELS);
-  const opts = {
-    baseOptions:{ modelAssetPath: modelPath, delegate:"GPU" },
+  runBtn.textContent='Loading model…';
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");
+  landmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions:{
+      modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate:"GPU"
+    },
     runningMode:"VIDEO", numPoses:1,
     minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5
-  };
-  try{
-    landmarker = await PoseLandmarker.createFromOptions(vision, opts);
-  }catch(e){
-    setStatus('GPU path failed, retrying on CPU…');
-    opts.baseOptions.delegate = 'CPU';
-    landmarker = await PoseLandmarker.createFromOptions(vision, opts);
-  }
+  });
   return landmarker;
 }
 
 /* ---------- the analysis pass ---------- */
 runBtn.onclick = async () => {
   runBtn.disabled=true; replayBtn.disabled=true; expBtn.disabled=true;
-  runBtn.textContent='Loading…';
   try{ await getModel(); }
-  catch(err){
-    console.error(err);
-    runBtn.textContent='Analyse'; runBtn.disabled=false;
-    setStatus('<b>Could not load the pose model.</b><br>'+
-      String(err && err.message || err)+
-      '<br>Usually the network blocking the CDN. Try a phone hotspot.', true);
-    return;
-  }
-  setStatus('Analysing — the clip plays through once while it tracks.');
+  catch(err){ runBtn.textContent='Model failed to load'; console.error(err); return; }
   runBtn.textContent='Analysing…';
   prog.classList.add('on');
   frames=[];
